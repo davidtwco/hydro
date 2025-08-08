@@ -1,6 +1,6 @@
 # <i>H</i>ydro
 
-> Ultra-pure, lag-free prompt with async Git status. Designed only for [Fish](https://fishshell.com).
+> Ultra-pure, lag-free prompt with async Git and Jujutsu status. Designed only for [Fish](https://fishshell.com).
 
 [![](https://user-images.githubusercontent.com/56996/103166797-f807ee00-4868-11eb-9818-c661584274c8.gif)](#hydro)
 
@@ -103,7 +103,7 @@ Modify variables using `set --universal` from the command line or `set --global`
 | Variable               | Type  | Description                    | Default              |
 | ---------------------- | ----- | ------------------------------ | -------------------- |
 | `hydro_color_pwd`      | color | Color of the pwd segment.      | `$fish_color_normal` |
-| `hydro_color_git`      | color | Color of the git segment.      | `$fish_color_normal` |
+| `hydro_color_vcs`      | color | Color of the git segment.      | `$fish_color_normal` |
 | `hydro_color_start`    | color | Color of the start symbol.     | `$fish_color_normal` |
 | `hydro_color_error`    | color | Color of the error segment.    | `$fish_color_error`  |
 | `hydro_color_prompt`   | color | Color of the prompt symbol.    | `$fish_color_normal` |
@@ -123,6 +123,7 @@ Modify variables using `set --universal` from the command line or `set --global`
 | `fish_prompt_pwd_dir_length`   | numeric | The number of characters to display when path shortening. Set it to `0` to display only the topmost (current) directory. | `1`     |
 | `hydro_ignored_git_paths`      | strings | Space separated list of paths where no git info should be displayed.                                                     | `""`    |
 | `hydro_cmd_duration_threshold` | numeric | Minimum command duration, in milliseconds, after which command duration is displayed.                                    | `1000`  |
+| `hydro_jj`                     | boolean | Use `jj` instead of `git`                                                                                                | `false` | 
 
 ## License
 

@@ -1,19 +1,23 @@
 status is-interactive || exit
 
-set --global _hydro_git _hydro_git_$fish_pid
+set --global _hydro_vcs _hydro_vcs_$fish_pid
 
-function $_hydro_git --on-variable $_hydro_git
+function $_hydro_vcs --on-variable $_hydro_vcs
     commandline --function repaint
 end
 
 function _hydro_pwd --on-variable PWD --on-variable hydro_ignored_git_paths --on-variable fish_prompt_pwd_dir_length
-    set --local git_root (command git --no-optional-locks rev-parse --show-toplevel 2>/dev/null)
-    set --local git_base (string replace --all --regex -- "^.*/" "" "$git_root")
+    if test "$hydro_jj" = true
+        set --function vcs_root (path dirname (path dirname (path dirname (command jj config path --repo 2>/dev/null))))
+    else
+        set --function vcs_root (command git --no-optional-locks rev-parse --show-toplevel 2>/dev/null)
+    end
+    set --local vcs_base (string replace --all --regex -- "^.*/" "" "$vcs_root")
     set --local path_sep /
 
     test "$fish_prompt_pwd_dir_length" = 0 && set path_sep
 
-    if set --query git_root[1] && ! contains -- $git_root $hydro_ignored_git_paths
+    if set --query vcs_root[1] && ! contains -- $vcs_root $hydro_ignored_git_paths
         set --erase _hydro_skip_git_prompt
     else
         set --global _hydro_skip_git_prompt
@@ -21,11 +25,11 @@ function _hydro_pwd --on-variable PWD --on-variable hydro_ignored_git_paths --on
 
     set --global _hydro_pwd (
         string replace --ignore-case -- ~ \~ $PWD |
-        string replace -- "/$git_base/" /:/ |
+        string replace -- "/$vcs_base/" /:/ |
         string replace --regex --all -- "(\.?[^/]{"(
             string replace --regex --all -- '^$' 1 "$fish_prompt_pwd_dir_length"
         )"})[^/]*/" "\$1$path_sep" |
-        string replace -- : "$git_base" |
+        string replace -- : "$vcs_base" |
         string replace --regex -- '([^/]+)$' "\x1b[1m\$1\x1b[22m" |
         string replace --regex --all -- '(?!^/$)/|^$' "\x1b[2m/\x1b[22m"
     )
@@ -63,47 +67,83 @@ function _hydro_prompt --on-event fish_prompt
 
     command kill $_hydro_last_pid 2>/dev/null
 
-    set --query _hydro_skip_git_prompt && set $_hydro_git && return
+    set --query _hydro_skip_git_prompt && set $_hydro_vcs && return
 
-    fish --private --command "
-        set branch (
-            command git symbolic-ref --short HEAD 2>/dev/null ||
-            command git describe --tags --exact-match HEAD 2>/dev/null ||
-            command git rev-parse --short HEAD 2>/dev/null |
-                string replace --regex -- '(.+)' '@\$1'
-        )
+    if test "$hydro_jj" = true
+        fish --private --command "
+            set log (
+                jj log --ignore-working-copy --no-graph --color always -r @ -T '
+                  separate(
+                      \" \",
+                      bookmarks.join(\", \"),
+                      format_short_change_id_with_hidden_and_divergent_info(self),
+                      format_short_commit_id(commit_id),
+                      if(conflict, label(\"conflict\", \"(conflict)\")),
+                      if(empty, label(\"empty\", \"(empty)\")),
+                      if(divergent, label(\"divergent\", \"(divergent)\")),
+                      if(hidden, label(\"rest\", \"(hidden)\")),
+                      coalesce(
+                          label(
+                              \"rest\",
+                              surround(
+                                  \"\\\"\",
+                                  \"\\\"\",
+                                  if(
+                                      description.first_line().substr(0, 50).starts_with(description.first_line()),
+                                      description.first_line().substr(0, 49),
+                                      description.first_line().substr(0, 49) ++ \"…\"
+                                  )
+                              )
+                          ),
+                          label(if(empty, \"empty\"), description_placeholder)
+                      )
+                  )
+              ' 2>/dev/null
+            )
 
-        test -z \"\$$_hydro_git\" && set --universal $_hydro_git \"\$branch \"
+            set --universal $_hydro_vcs \"\$log \"
+        " &
+    else
+        fish --private --command "
+            set branch (
+                command git symbolic-ref --short HEAD 2>/dev/null ||
+                command git describe --tags --exact-match HEAD 2>/dev/null ||
+                command git rev-parse --short HEAD 2>/dev/null |
+                    string replace --regex -- '(.+)' '@\$1'
+            )
 
-        command git diff-index --quiet HEAD 2>/dev/null
-        test \$status -eq 1 ||
-            count (command git ls-files --others --exclude-standard (command git rev-parse --show-toplevel)) >/dev/null && set info \"$hydro_symbol_git_dirty\"
+            test -z \"\$$_hydro_vcs\" && set --universal $_hydro_vcs \"\$branch \"
 
-        for fetch in $hydro_fetch false
-            command git rev-list --count --left-right @{upstream}...@ 2>/dev/null |
-                read behind ahead
+            command git diff-index --quiet HEAD 2>/dev/null
+            test \$status -eq 1 ||
+                count (command git ls-files --others --exclude-standard (command git rev-parse --show-toplevel)) >/dev/null && set info \"$hydro_symbol_git_dirty\"
 
-            switch \"\$behind \$ahead\"
-                case \" \" \"0 0\"
-                case \"0 *\"
-                    set upstream \" $hydro_symbol_git_ahead\$ahead\"
-                case \"* 0\"
-                    set upstream \" $hydro_symbol_git_behind\$behind\"
-                case \*
-                    set upstream \" $hydro_symbol_git_ahead\$ahead $hydro_symbol_git_behind\$behind\"
+            for fetch in $hydro_fetch false
+                command git rev-list --count --left-right @{upstream}...@ 2>/dev/null |
+                    read behind ahead
+
+                switch \"\$behind \$ahead\"
+                    case \" \" \"0 0\"
+                    case \"0 *\"
+                        set upstream \" $hydro_symbol_git_ahead\$ahead\"
+                    case \"* 0\"
+                        set upstream \" $hydro_symbol_git_behind\$behind\"
+                    case \*
+                        set upstream \" $hydro_symbol_git_ahead\$ahead $hydro_symbol_git_behind\$behind\"
+                end
+
+                set --universal $_hydro_vcs \"\$branch\$info\$upstream \"
+
+                test \$fetch = true && command git fetch --no-tags 2>/dev/null
             end
-
-            set --universal $_hydro_git \"\$branch\$info\$upstream \"
-
-            test \$fetch = true && command git fetch --no-tags 2>/dev/null
-        end
-    " &
+        " &
+    end
 
     set --global _hydro_last_pid $last_pid
 end
 
 function _hydro_fish_exit --on-event fish_exit
-    set --erase $_hydro_git
+    set --erase $_hydro_vcs
 end
 
 function _hydro_uninstall --on-event hydro_uninstall
@@ -115,7 +155,7 @@ end
 
 set --global hydro_color_normal (set_color normal)
 
-for color in hydro_color_{pwd,git,error,prompt,duration,start}
+for color in hydro_color_{pwd,vcs,error,prompt,duration,start}
     function $color --on-variable $color --inherit-variable color
         set --query $color && set --global _$color (set_color $$color)
     end && $color
