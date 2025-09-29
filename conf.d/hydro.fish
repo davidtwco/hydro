@@ -71,11 +71,19 @@ function _hydro_prompt --on-event fish_prompt
 
     if test "$hydro_jj" = true
         fish --private --command "
-            set log (
+            set bookmark (
+                jj --ignore-working-copy --at-op=@ --no-pager log --no-graph --limit 1 -r \"
+                  coalesce(
+                      heads(::@ & (bookmarks() | remote_bookmarks() | tags())),
+                      heads(@:: & (bookmarks() | remote_bookmarks() | tags())),
+                      trunk()
+                  )
+                \" -T \"separate(' ', bookmarks, tags)\" 2> /dev/null | cut -d ' ' -f 1
+            )
+            set extra (
                 jj log --ignore-working-copy --no-graph --color always -r @ -T '
                   separate(
                       \" \",
-                      bookmarks.join(\", \"),
                       format_short_change_id_with_hidden_and_divergent_info(self),
                       format_short_commit_id(commit_id),
                       if(conflict, label(\"conflict\", \"(conflict)\")),
@@ -101,7 +109,7 @@ function _hydro_prompt --on-event fish_prompt
               ' 2>/dev/null
             )
 
-            set --universal $_hydro_vcs \"\$log \"
+            set --universal $_hydro_vcs \"\$bookmark \$extra \"
         " &
     else
         fish --private --command "
